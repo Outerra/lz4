@@ -84,6 +84,7 @@ const char* LZ4_versionString (void);
 
 int LZ4_compress_default(const char* source, char* dest, int sourceSize, int maxDestSize);
 int LZ4_decompress_safe (const char* source, char* dest, int compressedSize, int maxDecompressedSize);
+int LZ4_decompress_safe_size(const char* source, char* dest, int maxCompressedSize, int decompressedSize);
 
 /*
 LZ4_compress_default() :
@@ -108,6 +109,8 @@ LZ4_decompress_safe() :
              If the source stream is detected malformed, the function will stop decoding and return a negative result.
              This function is protected against buffer overflow exploits, including malicious data packets.
              It never writes outside output buffer, nor reads outside input buffer.
+
+LZ4_decompress_safe_size() : like LZ4_decompress_safe, but decompress knowing the target size
 */
 
 

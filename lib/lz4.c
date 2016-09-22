@@ -1260,6 +1260,11 @@ int LZ4_decompress_safe(const char* source, char* dest, int compressedSize, int 
     return LZ4_decompress_generic(source, dest, compressedSize, maxDecompressedSize, endOnInputSize, full, 0, noDict, (BYTE*)dest, NULL, 0);
 }
 
+int LZ4_decompress_safe_size(const char* source, char* dest, int maxCompressedSize, int decompressedSize)
+{
+    return LZ4_decompress_generic(source, dest, maxCompressedSize, decompressedSize, endOnOutputSize, full, 0, noDict, (BYTE*)dest, NULL, 0);
+}
+
 int LZ4_decompress_safe_partial(const char* source, char* dest, int compressedSize, int targetOutputSize, int maxDecompressedSize)
 {
     return LZ4_decompress_generic(source, dest, compressedSize, maxDecompressedSize, endOnInputSize, partial, targetOutputSize, noDict, (BYTE*)dest, NULL, 0);
