@@ -11,6 +11,7 @@
 *.so
 *.so.*
 *.dylib
+*.dSYM   # apple
 
 # Executables
 *.exe
@@ -19,9 +20,19 @@
 lz4
 
 # IDE / editors files
-*.suo
-*.user
 .clang_complete
 _codelite/
 _codelite_lz4/
+bin/
 *.zip
+
+# Mac
+.DS_Store
+*.dSYM
+
+# Windows / Msys
+nul
+ld.exe*
+
+# test files
+*.lz4

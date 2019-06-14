@@ -1,6 +1,6 @@
 # ################################################################
 # LZ4 - Makefile
-# Copyright (C) Yann Collet 2011-2015
+# Copyright (C) Yann Collet 2011-present
 # All rights reserved.
 #
 # BSD license
@@ -26,93 +26,176 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 # You can contact the author at :
-#  - LZ4 source repository : https://github.com/Cyan4973/lz4
+#  - LZ4 source repository : https://github.com/lz4/lz4
 #  - LZ4 forum froup : https://groups.google.com/forum/#!forum/lz4c
 # ################################################################
 
-DESTDIR?=
-PREFIX ?= /usr/local
-
-LIBDIR ?= $(PREFIX)/lib
-INCLUDEDIR=$(PREFIX)/include
-PRGDIR  = programs
 LZ4DIR  = lib
+PRGDIR  = programs
+TESTDIR = tests
+EXDIR   = examples
 
+include Makefile.inc
 
-# Define nul output
-ifneq (,$(filter Windows%,$(OS)))
-VOID = nul
-else
-VOID = /dev/null
-endif
+.PHONY: default
+default: lib-release lz4-release
 
+.PHONY: all
+all: allmost examples manuals build_tests
 
-.PHONY: default all lib lz4 clean test versionsTest examples
+.PHONY: allmost
+allmost: lib lz4
 
-default: lz4
+.PHONY: lib lib-release liblz4.a
+lib: liblz4.a
+lib lib-release liblz4.a:
+	@$(MAKE) -C $(LZ4DIR) $@
 
-all: lib lz4
+.PHONY: lz4 lz4-release
+lz4 : liblz4.a
+lz4-release : lib-release
+lz4 lz4-release :
+	@$(MAKE) -C $(PRGDIR) $@
+	@cp $(PRGDIR)/lz4$(EXT) .
 
-lib:
-	@$(MAKE) -C $(LZ4DIR) all
+.PHONY: examples
+examples: liblz4.a
+	$(MAKE) -C $(EXDIR) all
 
-lz4:
-	@$(MAKE) -C $(PRGDIR)
-	@cp $(PRGDIR)/lz4 .
+.PHONY: manuals
+manuals:
+	@$(MAKE) -C contrib/gen_manual $@
 
+.PHONY: build_tests
+build_tests:
+	@$(MAKE) -C $(TESTDIR) all
+
+.PHONY: clean
 clean:
-	@$(MAKE) -C $(PRGDIR) $@ > $(VOID)
 	@$(MAKE) -C $(LZ4DIR) $@ > $(VOID)
-	@$(MAKE) -C examples $@ > $(VOID)
-	@$(MAKE) -C versionsTest $@ > $(VOID)
-	@$(RM) lz4
+	@$(MAKE) -C $(PRGDIR) $@ > $(VOID)
+	@$(MAKE) -C $(TESTDIR) $@ > $(VOID)
+	@$(MAKE) -C $(EXDIR) $@ > $(VOID)
+	@$(MAKE) -C contrib/gen_manual $@ > $(VOID)
+	@$(RM) lz4$(EXT)
 	@echo Cleaning completed
 
 
-#------------------------------------------------------------------------
-#make install is validated only for Linux, OSX, kFreeBSD, Hurd and
-#FreeBSD targets
-ifneq (,$(filter $(shell uname),Linux Darwin GNU/kFreeBSD GNU FreeBSD))
+#-----------------------------------------------------------------------------
+# make install is validated only for Linux, OSX, BSD, Hurd and Solaris targets
+#-----------------------------------------------------------------------------
+ifeq ($(POSIX_ENV),Yes)
+HOST_OS = POSIX
 
-install:
-	@$(MAKE) -C $(LZ4DIR) $@
-	@$(MAKE) -C $(PRGDIR) $@
-
-uninstall:
+.PHONY: install uninstall
+install uninstall:
 	@$(MAKE) -C $(LZ4DIR) $@
 	@$(MAKE) -C $(PRGDIR) $@
 
 travis-install:
-	sudo $(MAKE) install
-
-test:
-	$(MAKE) -C $(PRGDIR) test
+	$(MAKE) -j1 install DESTDIR=~/install_test_dir
 
 cmake:
-	@cd cmake_unofficial; cmake CMakeLists.txt; $(MAKE)
+	@cd contrib/cmake_unofficial; cmake $(CMAKE_PARAMS) CMakeLists.txt; $(MAKE)
 
-gpptest: clean
-	$(MAKE) all CC=g++ CFLAGS="-O3 -I../lib -Wall -Wextra -Wundef -Wshadow -Wcast-align -Werror"
+endif
 
+
+ifneq (,$(filter MSYS%,$(shell uname)))
+HOST_OS = MSYS
+CMAKE_PARAMS = -G"MSYS Makefiles"
+endif
+
+
+#------------------------------------------------------------------------
+#make tests validated only for MSYS, Linux, OSX, kFreeBSD and Hurd targets
+#------------------------------------------------------------------------
+ifneq (,$(filter $(HOST_OS),MSYS POSIX))
+
+.PHONY: list
+list:
+	@$(MAKE) -pRrq -f $(lastword $(MAKEFILE_LIST)) : 2>/dev/null | awk -v RS= -F: '/^# File/,/^# Finished Make data base/ {if ($$1 !~ "^[#.]") {print $$1}}' | sort | egrep -v -e '^[^[:alnum:]]' -e '^$@$$' | xargs
+
+.PHONY: check
+check:
+	$(MAKE) -C $(TESTDIR) test-lz4-essentials
+
+.PHONY: test
+test:
+	$(MAKE) -C $(TESTDIR) $@
+	$(MAKE) -C $(EXDIR) $@
+
+clangtest: CFLAGS ?= -O3
+clangtest: CFLAGS += -Werror -Wconversion -Wno-sign-conversion
+clangtest: CC = clang
 clangtest: clean
-	CFLAGS="-O3 -Werror -Wconversion -Wno-sign-conversion" $(MAKE) all CC=clang
+	$(CC) -v
+	@CFLAGS="$(CFLAGS)" $(MAKE) -C $(LZ4DIR)  all CC=$(CC)
+	@CFLAGS="$(CFLAGS)" $(MAKE) -C $(PRGDIR)  all CC=$(CC)
+	@CFLAGS="$(CFLAGS)" $(MAKE) -C $(TESTDIR) all CC=$(CC)
 
-sanitize: clean
-	CFLAGS="-O3 -g -fsanitize=undefined" $(MAKE) test CC=clang FUZZER_TIME="-T1mn" NB_LOOPS=-i1
+clangtest-native: clean
+	clang -v
+	@CFLAGS="-O3 -Werror -Wconversion -Wno-sign-conversion" $(MAKE) -C $(LZ4DIR)  all    CC=clang
+	@CFLAGS="-O3 -Werror -Wconversion -Wno-sign-conversion" $(MAKE) -C $(PRGDIR)  native CC=clang
+	@CFLAGS="-O3 -Werror -Wconversion -Wno-sign-conversion" $(MAKE) -C $(TESTDIR) native CC=clang
 
+usan: clean
+	CC=clang CFLAGS="-O3 -g -fsanitize=undefined" $(MAKE) test FUZZER_TIME="-T30s" NB_LOOPS=-i1
+
+usan32: clean
+	CFLAGS="-m32 -O3 -g -fsanitize=undefined" $(MAKE) test FUZZER_TIME="-T30s" NB_LOOPS=-i1
+
+.PHONY: staticAnalyze
 staticAnalyze: clean
 	CFLAGS=-g scan-build --status-bugs -v $(MAKE) all
 
-armtest: clean
-	CFLAGS="-O3 -Werror" $(MAKE) -C $(LZ4DIR) all CC=arm-linux-gnueabi-gcc
-	CFLAGS="-O3 -Werror" $(MAKE) -C $(PRGDIR) bins CC=arm-linux-gnueabi-gcc
+.PHONY: cppcheck
+cppcheck:
+	cppcheck . --force --enable=warning,portability,performance,style --error-exitcode=1 > /dev/null
 
+platformTest: clean
+	@echo "\n ---- test lz4 with $(CC) compiler ----"
+	@$(CC) -v
+	CFLAGS="-O3 -Werror"         $(MAKE) -C $(LZ4DIR) all
+	CFLAGS="-O3 -Werror -static" $(MAKE) -C $(PRGDIR) all
+	CFLAGS="-O3 -Werror -static" $(MAKE) -C $(TESTDIR) all
+	$(MAKE) -C $(TESTDIR) test-platform
+
+.PHONY: versionsTest
 versionsTest: clean
-	$(MAKE) -C versionsTest
+	$(MAKE) -C $(TESTDIR) $@
 
-examples:
-	$(MAKE) -C $(LZ4DIR)
-	$(MAKE) -C $(PRGDIR) lz4
-	$(MAKE) -C examples test
+gpptest gpptest32: CC = "$(CXX) -Wno-deprecated"
+gpptest gpptest32: CFLAGS = -O3 -Wall -Wextra -Wundef -Wshadow -Wcast-align -Werror
+gpptest32: CFLAGS += -m32
+gpptest gpptest32: clean
+	$(CXX) -v
+	CC=$(CC) $(MAKE) -C $(LZ4DIR)  all CFLAGS="$(CFLAGS)"
+	CC=$(CC) $(MAKE) -C $(PRGDIR)  all CFLAGS="$(CFLAGS)"
+	CC=$(CC) $(MAKE) -C $(TESTDIR) all CFLAGS="$(CFLAGS)"
+
+cxx17build : CC = "$(CXX) -Wno-deprecated"
+cxx17build : CFLAGS = -std=c++17 -Wall -Wextra -Wundef -Wshadow -Wcast-align -Werror -pedantic
+cxx17build : clean
+	$(CXX) -v
+	CC=$(CC) $(MAKE) -C $(LZ4DIR)  all CFLAGS="$(CFLAGS)"
+	CC=$(CC) $(MAKE) -C $(PRGDIR)  all CFLAGS="$(CFLAGS)"
+	CC=$(CC) $(MAKE) -C $(TESTDIR) all CFLAGS="$(CFLAGS)"
+
+ctocpptest: LIBCC="$(CC)"
+ctocpptest: TESTCC="$(CXX)"
+ctocpptest: CFLAGS=""
+ctocpptest: clean
+	CC=$(LIBCC)  $(MAKE) -C $(LZ4DIR)  CFLAGS="$(CFLAGS)" all
+	CC=$(LIBCC)  $(MAKE) -C $(TESTDIR) CFLAGS="$(CFLAGS)" lz4.o lz4hc.o lz4frame.o
+	CC=$(TESTCC) $(MAKE) -C $(TESTDIR) CFLAGS="$(CFLAGS)" all
+
+c_standards: clean
+	$(MAKE) clean; CFLAGS="-std=c90   -Werror -pedantic -Wno-long-long -Wno-variadic-macros" $(MAKE) allmost
+	$(MAKE) clean; CFLAGS="-std=gnu90 -Werror -pedantic -Wno-long-long -Wno-variadic-macros" $(MAKE) allmost
+	$(MAKE) clean; CFLAGS="-std=c99   -Werror -pedantic" $(MAKE) all
+	$(MAKE) clean; CFLAGS="-std=gnu99 -Werror -pedantic" $(MAKE) all
+	$(MAKE) clean; CFLAGS="-std=c11   -Werror" $(MAKE) all
 
 endif
